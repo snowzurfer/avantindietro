@@ -24,10 +24,13 @@ class ViewController: UIViewController, ARSCNViewDelegate {
   /// The stack of commands used to implement the undo/redo featur
   ///
   /// This is complemented by utility functions which add/remove commands to it
-  private let commandsManager = CommandsManager()
+  fileprivate let commandsManager = CommandsManager()
   
   /// Reference to the undo button
   @IBOutlet weak var undoBtn: UIButton!
+
+  // Used by the pinch gesture recognizer
+  fileprivate var initialScale: simd_float3? = nil
   
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -58,10 +61,14 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     let singleTapGesture =
       UITapGestureRecognizer(target: self,
                              action: #selector(handleSingleTap(sender:)))
+    let pinchGesture =
+      UIPinchGestureRecognizer(target: self,
+                               action: #selector(handlePinch(sender:)))
     
     
     let gestureRecognizers = [
-      singleTapGesture
+      singleTapGesture,
+      pinchGesture
     ]
     
     for gesture in gestureRecognizers {
@@ -141,6 +148,40 @@ extension ViewController {
                                               translation: diff)
         
         self.commandsManager.pushNoExecution(translationCmd)
+      }
+    }
+  }
+  
+  @objc fileprivate func handlePinch(sender: UIPinchGestureRecognizer) {
+    let scale = simd_float3(Float(sender.scale))
+    let state = sender.state
+  
+    updateQ.async(group: updateGrp) {
+      switch state {
+      case .began:
+        self.initialScale = self.shipNode.simdScale
+        
+      case .changed:
+        // Scale the ship as we go
+        if let initialScale = self.initialScale {
+          self.shipNode.simdScale = initialScale * scale
+        }
+        
+      case .cancelled, .ended, .failed:
+        if let initialScale = self.initialScale {
+          // Only store the difference
+          let diff = self.shipNode.simdScale - initialScale
+          
+          let scaleCmd = ScaleCommand(node: self.shipNode, scale: diff)
+          self.commandsManager.pushNoExecution(scaleCmd)
+        }
+        
+        self.initialScale = nil
+        
+      default:
+        print("Unhandled case: \(state.rawValue)")
+        self.initialScale = nil
+        
       }
     }
   }
