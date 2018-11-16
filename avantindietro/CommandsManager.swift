@@ -48,4 +48,9 @@ class CommandsManager {
       }
     }
   }
+  
+  /// Return whether there are commands in the list or not
+  public var areNoCommands: Bool {
+    return commands.isEmpty
+  }
 }

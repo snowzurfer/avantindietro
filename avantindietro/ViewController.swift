@@ -26,6 +26,9 @@ class ViewController: UIViewController, ARSCNViewDelegate {
   /// This is complemented by utility functions which add/remove commands to it
   private let commandsManager = CommandsManager()
   
+  /// Reference to the undo button
+  @IBOutlet weak var undoBtn: UIButton!
+  
   override func viewDidLoad() {
     super.viewDidLoad()
   
@@ -64,6 +67,16 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     for gesture in gestureRecognizers {
       sceneView.addGestureRecognizer(gesture)
     }
+    
+    // Setup gestures for the undo button
+    undoBtn.addTarget(self, action: #selector(onUndoBtnTouchUpInside),
+                      for: .touchUpInside)
+    
+    // Start with the undo button hidden
+    fade(undoBtn, toAlpha: 0, withDuration: 0, andHide: true)
+    
+    // Register for updates from the commands manager
+    commandsManager.delegate = self
   }
   
   override func viewWillAppear(_ animated: Bool) {
@@ -89,6 +102,12 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 
 // Gestures-handling extension
 extension ViewController {
+  
+  @objc fileprivate func onUndoBtnTouchUpInside(_ sender: UIButton) {
+    updateQ.async(group: updateGrp) {
+      self.commandsManager.undo()
+    }
+  }
   
   @objc fileprivate func handleSingleTap(sender: UITapGestureRecognizer) {
     // We only care about the end state for now
@@ -122,6 +141,20 @@ extension ViewController {
                                               translation: diff)
         
         self.commandsManager.pushNoExecution(translationCmd)
+      }
+    }
+  }
+}
+
+extension ViewController: CommandsManagerDelegate {
+  
+  func operationExecuted(_ manager: CommandsManager) {
+    mainQ.async {
+      if manager.areNoCommands {
+        fade(self.undoBtn, toAlpha: 0, withDuration: 0.25, andHide: true)
+      }
+      else {
+        fade(self.undoBtn, toAlpha: 1, withDuration: 0.25, andHide: false)
       }
     }
   }
