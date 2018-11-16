@@ -31,6 +31,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 
   // Used by the pinch gesture recognizer
   fileprivate var initialScale: simd_float3? = nil
+  // Used by the gesture recognizer which handles rotation
+  fileprivate var initialOrientation: simd_quatf? = nil
   
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -64,11 +66,15 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     let pinchGesture =
       UIPinchGestureRecognizer(target: self,
                                action: #selector(handlePinch(sender:)))
-    
+    let singlePanGesture =
+      UIPanGestureRecognizer(target: self,
+                             action: #selector(handleSinglePan(sender:)))
+
     
     let gestureRecognizers = [
       singleTapGesture,
-      pinchGesture
+      pinchGesture,
+      singlePanGesture
     ]
     
     for gesture in gestureRecognizers {
@@ -160,12 +166,14 @@ extension ViewController {
       switch state {
       case .began:
         self.initialScale = self.shipNode.simdScale
+        break
         
       case .changed:
         // Scale the ship as we go
         if let initialScale = self.initialScale {
           self.shipNode.simdScale = initialScale * scale
         }
+        break
         
       case .cancelled, .ended, .failed:
         if let initialScale = self.initialScale {
@@ -177,6 +185,7 @@ extension ViewController {
         }
         
         self.initialScale = nil
+        break
         
       default:
         print("Unhandled case: \(state.rawValue)")
@@ -184,6 +193,56 @@ extension ViewController {
         
       }
     }
+  }
+  
+  // We use a vertical single pan for rotation to simplify the example,
+  // but it could (and it should) be subsituted for a more appropriate
+  // recognizer/signifier
+  @objc fileprivate func handleSinglePan(sender: UIPanGestureRecognizer) {
+    guard let view = sender.view as? ARSCNView else {
+      return
+    }
+    
+    let translation = sender.translation(in: view)
+    let state = sender.state
+    
+    updateQ.async(group: updateGrp) {
+      switch state {
+      case .began:
+        self.initialOrientation = self.shipNode.simdOrientation
+        break
+        
+      case .changed:
+        let rot = Float(translation.y) * 0.02 // Constant found empirically
+        let quat = simd_quatf(angle: rot,
+                              axis: simd_float3(0, 1, 0)) // Y axis
+        
+        self.shipNode.simdOrientation *= quat
+        break
+        
+      case .ended, .cancelled, .failed:
+        if let initialOrientation = self.initialOrientation {
+          
+          // https://stackoverflow.com/a/4372718/1584340 for quaternion maths
+          let diff =
+            self.shipNode.simdOrientation * initialOrientation.conjugate
+          
+          let rotCommand = RotateCommand(node: self.shipNode,
+                                         rotation: diff)
+          self.commandsManager.pushNoExecution(rotCommand)
+        }
+        
+        self.initialOrientation = nil
+        break
+
+      default:
+        print("Unhandled case: \(state.rawValue)")
+        self.initialOrientation = nil
+
+      }
+    }
+    
+    sender.setTranslation(CGPoint.zero, in: view)
   }
 }
 
