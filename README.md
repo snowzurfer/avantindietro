@@ -13,4 +13,4 @@ TBD
 
 ## License
 
-Please see [LICENSE]*(./LICENSE)
+Please see [LICENSE](./LICENSE)
